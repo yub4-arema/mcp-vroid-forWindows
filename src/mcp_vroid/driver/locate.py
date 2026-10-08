@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image, ImageOps
 
 from .capture import Shot
+from .paths import tesseract_command
 
 
 @dataclass
@@ -55,8 +56,8 @@ def ocr_words(img: Image.Image | Shot, upscale: float = 2.0,
         p = Path(td) / "ocr.png"
         prepped.save(p)
         out = subprocess.run(
-            ["tesseract", str(p), "stdout", "-l", lang, "--psm", str(psm), "tsv"],
-            capture_output=True, text=True,
+            [tesseract_command(), str(p), "stdout", "-l", lang, "--psm", str(psm), "tsv"],
+            capture_output=True, text=True, encoding="utf-8", check=True,
         )
     matches: list[Match] = []
     lines = out.stdout.splitlines()

@@ -10,10 +10,10 @@ labels: bug
 
 **Environment**
 
-- Compositor and version (`hyprctl version | head -1`):
+- Windows version, or Linux compositor and version:
 - VRoid Studio version, and UI language:
 - Monitor resolution and scale:
-- Install: Steam/Proton, or something else?
+- Install: Windows standalone, Windows Steam, or Linux Steam/Proton?
 
 **`vroid_status` output**
 

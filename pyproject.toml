@@ -1,7 +1,7 @@
 [project]
 name = "mcp-vroid"
 version = "0.1.0"
-description = "Drive VRoid Studio from any MCP client - Wayland GUI automation with OCR and a virtual pointer"
+description = "Drive VRoid Studio from any MCP client on Windows or Linux/Wayland"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -22,6 +22,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -29,12 +30,13 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 dependencies = [
-    "mcp>=1.2",
+    "mcp>=2.0,<3",
     "pillow>=10.0",
     "numpy>=1.26",
     "opencv-python-headless>=4.9",
     "pytesseract>=0.3.10",
-    "python-xlib>=0.33",
+    "python-xlib>=0.33; sys_platform == 'linux'",
+    "pywin32>=306; sys_platform == 'win32'",
 ]
 
 [project.scripts]
@@ -42,10 +44,10 @@ mcp-vroid = "mcp_vroid.server:main"
 vroid-driver = "mcp_vroid.driver.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/nhodges/mcp-vroid"
-Repository = "https://github.com/nhodges/mcp-vroid"
-Issues = "https://github.com/nhodges/mcp-vroid/issues"
-Changelog = "https://github.com/nhodges/mcp-vroid/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/yub4-arema/mcp-vroid-forWindows"
+Repository = "https://github.com/yub4-arema/mcp-vroid-forWindows"
+Issues = "https://github.com/yub4-arema/mcp-vroid-forWindows/issues"
+Changelog = "https://github.com/yub4-arema/mcp-vroid-forWindows/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]

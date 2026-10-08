@@ -11,6 +11,7 @@ clicks, no keys.
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 
 import anyio
@@ -24,10 +25,12 @@ async def main(screenshot: bool) -> int:
         command=sys.executable,
         args=["-m", "mcp_vroid"],
         cwd=str(REPO),
+        env=os.environ.copy(),
     )
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
-            init = await session.initialize()
+            with anyio.fail_after(30):
+                init = await session.initialize()
             print(f"initialized: {init.server_info.name} {init.server_info.version}")
 
             tools = (await session.list_tools()).tools
@@ -37,7 +40,8 @@ async def main(screenshot: bool) -> int:
                 print(f"  - {t.name}: {first}")
 
             print("\nvroid_status:")
-            res = await session.call_tool("vroid_status", {})
+            with anyio.fail_after(30):
+                res = await session.call_tool("vroid_status", {})
             for block in res.content:
                 if getattr(block, "text", None):
                     print(block.text)

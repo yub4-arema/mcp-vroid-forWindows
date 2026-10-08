@@ -4,6 +4,27 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+* Add native Windows window discovery, launch (Steam or `MCP_VROID_EXE`),
+  focus/maximize and foreground restoration using typed Win32 APIs.
+* Capture the client area with Pillow ImageGrab using physical pixels,
+  including high-DPI and multiple monitors with negative origins.
+* Add SendInput mouse, drag, wheel, hotkey and Unicode text support;
+  identify VRoid by executable and allow its owned native dialogs.
+* Handle native Windows save dialogs and paths for `.vrm` and `.vroid` files.
+* Use LocalAppData for Windows outputs, discover Windows Tesseract installs,
+  expose `MCP_VROID_TESSERACT`, and skip Unix session probing on Windows.
+* Keep the Linux/Hyprland backend, restrict python-xlib to Linux, and declare
+  the MCP 2 SDK required by the existing server imports.
+* Document Windows setup and add Windows/Linux regression CI.
+* Launch through Explorer so MCP stdio shutdown does not terminate VRoid.
+* Hold clicks and keyboard chords long enough for Unity to observe them,
+  releasing buttons/modifiers even when input is interrupted.
+* Locate colour input boxes by their hex value to avoid matching checkbox
+  captions containing the word "color".
+* Validate the native editing/save/VRM 1.0 export flow on VRoid Studio 2.14.0.
+
 ## [0.1.0] — 2026-08-24
 
 First public release.

@@ -346,17 +346,19 @@ dependencies = [
     { name = "opencv-python-headless" },
     { name = "pillow" },
     { name = "pytesseract" },
-    { name = "python-xlib" },
+    { name = "python-xlib", marker = "sys_platform == 'linux'" },
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "mcp", specifier = ">=1.2" },
+    { name = "mcp", specifier = ">=2.0,<3" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "opencv-python-headless", specifier = ">=4.9" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "pytesseract", specifier = ">=0.3.10" },
-    { name = "python-xlib", specifier = ">=0.33" },
+    { name = "python-xlib", marker = "sys_platform == 'linux'", specifier = ">=0.33" },
+    { name = "pywin32", marker = "sys_platform == 'win32'", specifier = ">=306" },
 ]
 
 [[package]]

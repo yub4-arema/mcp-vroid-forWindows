@@ -6,6 +6,8 @@ screenshot says. Callers get the Shot back so they can Read the PNG.
 from __future__ import annotations
 
 import time
+import sys
+import re
 from pathlib import Path
 
 from . import capture as C
@@ -365,6 +367,8 @@ def _fill_vrm_settings(avatar_name: str, creators: str) -> None:
 
 def to_wine_path(p: str | Path) -> str:
     r"""/home/you/x -> Z:\home\you\x  (the Proton prefix maps Z:\ to /)."""
+    if sys.platform == "win32":
+        return str(Path(p).resolve())
     return "Z:" + str(Path(p).resolve()).replace("/", "\\")
 
 
@@ -374,6 +378,9 @@ def _save_dialog(out_path: Path, timeout: float = 60.0) -> None:
     The dialog opens with the file-name field focused and its text selected,
     so typing replaces it; no click needed in the common case.
     """
+    if sys.platform == "win32":
+        _windows_save_dialog(out_path, timeout)
+        return
     win = None
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -421,10 +428,43 @@ def _save_dialog(out_path: Path, timeout: float = 60.0) -> None:
 
 
 def _save_dialog_window():
+    if sys.platform == "win32":
+        return W.save_dialog_window()
     for c in W.hyprctl_json("clients"):
         if (c.get("title") or "").strip().lower() in ("export", "save as", "save"):
             return c
     return None
+
+
+def _windows_save_dialog(out_path: Path, timeout: float) -> None:
+    """Use the native filename control, independent of dialog language/position."""
+    from . import _win32 as N
+
+    deadline = time.monotonic() + timeout
+    win = None
+    while time.monotonic() < deadline:
+        win = _save_dialog_window()
+        if win:
+            break
+        time.sleep(0.25)
+    if win is None:
+        raise TimeoutError("VRoid's Windows save dialog never appeared")
+    W.focus()
+    hwnd = int(win.address, 16)
+    field = N.filename_control(hwnd)
+    if not field:
+        raise RuntimeError("Windows save dialog has no filename edit control")
+    x, y, w, h = N.client_geometry(field)
+    I.click(x + w / 2, y + h / 2, space="layout")
+    I.clear_field()
+    I.type_text(str(out_path.resolve()))
+    I.key("Return")
+    while time.monotonic() < deadline:
+        if not N.IsWindow(hwnd) or not N.IsWindowVisible(hwnd):
+            return
+        time.sleep(0.25)
+    raise TimeoutError("Windows save dialog is still open; check for an overwrite "
+                       "confirmation or invalid filename with vroid_screenshot(whole_screen=true)")
 
 
 def default_out() -> Path:
@@ -471,7 +511,37 @@ def _find_label(s: Shot, label: str):
     return None
 
 
-def find_param(label: str, max_pages: int = 10):
+def _find_color_field(s: Shot, label: str):
+    # Locate actual hex values first: words in checkbox captions are not
+    # colour settings. Search only the label band immediately above each box.
+    w, h = s.image.size
+    x0, y0 = int(w * 0.91), int(h * 0.03)
+    crop = s.image.crop((x0, y0, w, h))
+    fields = [m for m in L.ocr_words(crop)
+              if re.fullmatch(r"#?[0-9A-F]{6}", m.text.upper().replace("O", "0"))]
+    for field in sorted(fields, key=lambda m: m.top):
+        fx, fy = field.center[0] + x0, field.center[1] + y0
+        band = (max(int(w * PANEL_REGION[0]), field.left + x0 - field.width * 4),
+                max(0, fy - int(h * 0.04)), field.left + x0,
+                field.top + y0 - round(field.height * 1.5))
+        words = L.ocr_words(s.image.crop(band))
+        rows = []
+        for word in sorted(words, key=lambda m: m.center[1]):
+            row = next((r for r in rows if abs(r[0].center[1] - word.center[1])
+                        <= max(r[0].height, word.height)), None)
+            if row is None:
+                rows.append([word])
+            else:
+                row.append(word)
+        # Match the complete label row: 'Color' must not match 'Dark Color'.
+        if any(L._norm(" ".join(m.text for m in sorted(row, key=lambda m: m.left)))
+               == L._norm(label) for row in rows):
+            return L.Match(field.text, field.conf, fx - field.width // 2,
+                           fy - field.height // 2, field.width, field.height)
+    return None
+
+
+def find_param(label: str, max_pages: int = 10, *, color: bool = False):
     """Scroll the Parameters panel from the top until `label` is visible.
     Returns (shot, Match) with the row in a safe (not edge-clipped) place."""
     s = shot()
@@ -479,7 +549,7 @@ def find_param(label: str, max_pages: int = 10):
     time.sleep(0.4)
     for _ in range(max_pages):
         s = shot(f"find-{L._norm(label)}")
-        m = _find_label(s, label)
+        m = _find_color_field(s, label) if color else _find_label(s, label)
         if m and m.center[1] < s.image.height * 0.93:
             return s, m
         scroll_panel(8, s)
@@ -512,9 +582,8 @@ def read_param(label: str) -> str:
 
 def set_color_param(label: str, hexcode: str) -> Shot:
     """Scroll to a colour row (swatch + hex box under the label) and set it."""
-    s, m = find_param(label)
-    x = int(s.image.width * 0.9435)
-    I.click(x, m.center[1] + int(s.image.height * 0.0167), space="image", shot=s)
+    s, m = find_param(label, color=True)
+    I.click(*m.center, space="image", shot=s)
     time.sleep(0.3)
     I.clear_field()
     I.type_text(hexcode.lstrip("#").upper())

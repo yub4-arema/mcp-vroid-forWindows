@@ -8,6 +8,7 @@ callers can hand OCR pixel coords straight back to input.click().
 from __future__ import annotations
 
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +19,8 @@ from .paths import CAPTURES
 
 
 def output_scale() -> float:
+    if sys.platform == "win32":
+        return 1.0  # both window geometry and capture use physical pixels
     mons = W.hyprctl_json("monitors")
     return float(mons[0].get("scale", 1.0)) if mons else 1.0
 
@@ -62,6 +65,15 @@ class Shot:
 def grab_region(x: int, y: int, w: int, h: int, tag: str = "",
                 path: Path | None = None) -> Shot:
     path = path or next_capture_path(tag)
+    if w <= 0 or h <= 0:
+        raise ValueError("capture width and height must be positive")
+    if sys.platform == "win32":
+        from PIL import ImageGrab
+        from . import _win32 as N
+        N.ensure_dpi_awareness()
+        img = ImageGrab.grab(bbox=(x, y, x + w, y + h), all_screens=True).convert("RGB")
+        img.save(path)
+        return Shot(img, path, x, y, 1.0)
     scale = output_scale()
     subprocess.run(
         ["grim", "-g", f"{x},{y} {w}x{h}", str(path)],
@@ -82,6 +94,9 @@ def grab_window(win: W.Window | None = None, tag: str = "") -> Shot:
 
 
 def grab_screen(tag: str = "") -> Shot:
+    if sys.platform == "win32":
+        from . import _win32 as N
+        return grab_region(*N.desktop_geometry(), tag=tag)
     mon = W.hyprctl_json("monitors")[0]
     scale = float(mon.get("scale", 1.0))
     w = int(round(mon["width"] / scale))

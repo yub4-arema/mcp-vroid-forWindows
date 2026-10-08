@@ -1,4 +1,4 @@
-"""MCP server (stdio) that drives VRoid Studio's GUI on Hyprland/Wayland.
+"""MCP server (stdio) that drives VRoid Studio on Windows or Hyprland.
 
 Every tool is a thin, well-described wrapper over `mcp_vroid.driver`, which
 does the actual see -> locate -> act loop: `grim` screenshots, tesseract OCR
@@ -22,7 +22,7 @@ from __future__ import annotations
 import functools
 import os
 import shutil
-import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -42,13 +42,13 @@ from .driver import capture as C  # noqa: E402
 from .driver import input as I  # noqa: E402
 from .driver import locate as L  # noqa: E402
 from .driver import window as W  # noqa: E402
-from .driver.paths import CAPTURES, OUT, VPOINTER  # noqa: E402
+from .driver.paths import CAPTURES, OUT, VPOINTER, tesseract_command  # noqa: E402
 
 server = MCPServer(
     name="vroid",
     version="0.1.0",
     instructions=(
-        "Drives the VRoid Studio desktop app (Steam/Proton) on Hyprland by "
+        "Drives the VRoid Studio desktop app on Windows or Linux/Hyprland by "
         "screenshotting it, locating widgets with OCR, and injecting real "
         "pointer/keyboard events.\n\n"
         "The working loop is: vroid_launch -> vroid_screenshot (LOOK at the "
@@ -83,9 +83,7 @@ def _require_window() -> W.Window:
     win = W.find_window()
     if win is None:
         raise RuntimeError(
-            "VRoid Studio is not running (no Hyprland window with class "
-            "steam_app_1486350 / title 'VRoid Studio ...'). Call vroid_launch "
-            "first."
+            "VRoid Studio is not running. Call vroid_launch first."
         )
     return win
 
@@ -182,13 +180,12 @@ async def vroid_launch(
         float, Field(description="Seconds to wait for the window to appear.")
     ] = 240.0,
 ) -> dict[str, Any]:
-    """Start VRoid Studio (Steam appid 1486350, Proton) and take control of it.
+    """Start VRoid Studio (Steam appid 1486350 or MCP_VROID_EXE on Windows).
 
     Idempotent: if the window already exists it is reused, not relaunched.
-    Then the window is parked on Hyprland workspace 9, the workspace the user
-    was on is remembered (vroid_release puts them back), and the window is
-    focused and fullscreened so its geometry - and therefore every coordinate
-    you will read off a screenshot - is stable.
+    On Windows, remembers the foreground window, focuses VRoid and maximises
+    its client area. On Hyprland, parks it on workspace 9 and fullscreens it.
+    vroid_release restores the previous foreground window or workspace.
 
     Cold start over Proton takes 30-90 s; the call blocks until the window is
     up. It does NOT wait for the start screen to finish drawing, so take a
@@ -198,8 +195,7 @@ async def vroid_launch(
     def work() -> dict[str, Any]:
         global _prev_workspace
         if restart and W.find_window():
-            subprocess.run(["pkill", "-f", "VRoidStudio.exe"],
-                           capture_output=True)
+            W.terminate()
             time.sleep(5)
         win, prev = W.prepare(timeout)
         if _prev_workspace is None and prev != W.WORKSPACE:
@@ -239,12 +235,9 @@ async def vroid_status() -> dict[str, Any]:
             "captures_dir": str(CAPTURES),
             "out_dir": str(OUT),
             "recovered_session_env": _FILLED_ENV,
-            "helpers": {
-                "vpointer": {"path": str(VPOINTER), "present": VPOINTER.exists()},
-                "grim": bool(shutil.which("grim")),
-                "tesseract": bool(shutil.which("tesseract")),
-                "hyprctl": bool(shutil.which("hyprctl")),
-            },
+            "platform": sys.platform,
+            "backend": "win32" if sys.platform == "win32" else "hyprland",
+            "helpers": _helpers(),
         }
         if win is not None:
             try:
@@ -256,11 +249,22 @@ async def vroid_status() -> dict[str, Any]:
     return await _blocking(work)
 
 
+def _helpers() -> dict[str, Any]:
+    command = tesseract_command()
+    ocr = {"path": command, "present": bool(shutil.which(command))}
+    if sys.platform == "win32":
+        return {"win32": True, "pillow_imagegrab": True, "tesseract": ocr,
+                "vroid_exe": os.environ.get("MCP_VROID_EXE")}
+    return {"vpointer": {"path": str(VPOINTER), "present": VPOINTER.exists()},
+            "grim": bool(shutil.which("grim")), "tesseract": ocr["present"],
+            "hyprctl": bool(shutil.which("hyprctl"))}
+
+
 @server.tool()
 async def vroid_release() -> dict[str, Any]:
-    """Hand the desktop back: switch to the workspace the user was on before.
+    """Restore the previous foreground window (Windows) or workspace (Linux).
 
-    Leaves VRoid running on workspace 9. Call this when you are done with a
+    Leaves VRoid running. Call this when you are done with a
     session, or before handing control back to the human.
     """
 
@@ -811,9 +815,8 @@ async def vroid_current_screen() -> dict[str, Any]:
 async def vroid_export_vrm(
     path: Annotated[
         str,
-        Field(description="Where to write the .vrm, as a normal Linux path. "
-                          "Translated to the Proton prefix's Z:\\ mapping for "
-                          "the Wine save dialog."),
+        Field(description="Where to write the .vrm, as a native filesystem path. "
+                          "Relative paths use the server's out directory."),
     ],
     avatar_name: Annotated[
         str,
@@ -839,8 +842,8 @@ async def vroid_export_vrm(
 
     Editor toolbar share icon -> 'Export as VRM' -> the blue Export pill ->
     the VRM Settings modal (fills Avatar Name and Creators, picks the export
-    format, scrolls to the bottom and clicks Export) -> Wine's save dialog
-    (types a Z:\\ path and presses Return) -> waits for the file size to stop
+    format, scrolls to the bottom and clicks Export) -> the native Windows
+    or Wine save dialog -> waits for the file size to stop
     growing.
 
     Must be started from the EDITOR screen with a model loaded. Takes 30 s to
@@ -871,7 +874,7 @@ async def vroid_save_project(
         str | None,
         Field(description="Save As target: a bare name (written into the "
                           "server's out dir as <name>.vroid) or an absolute "
-                          "Linux path. Omit to do a plain Save, which "
+                          "filesystem path. Omit to do a plain Save, which "
                           "silently overwrites the project's existing file."),
     ] = None,
     timeout: Annotated[
@@ -880,10 +883,10 @@ async def vroid_save_project(
 ) -> dict[str, Any]:
     """Save the .vroid project - plain Save, or Save As to an explicit path.
 
-    With `name`: presses Ctrl+Shift+S and drives Wine's save dialog the same
+    With `name`: presses Ctrl+Shift+S and drives the save dialog the same
     way the VRM export does, then waits for the file. Without `name`: opens
     the hamburger menu and clicks Save, which overwrites the project's
-    existing file and opens the Wine dialog only if the project has never
+    existing file and opens the save dialog only if the project has never
     been saved (in that case call this again WITH a name).
 
     Worth doing before any risky experiment: nothing else in this server
@@ -902,7 +905,7 @@ async def vroid_save_project(
         A.save_project()
         return {"saved": None, "mode": "save",
                 "note": "plain Save; if this project had never been saved a "
-                        "Wine dialog is now open - screenshot with "
+                        "save dialog is now open - screenshot with "
                         "whole_screen=true and check."}
 
     return await _blocking(work)

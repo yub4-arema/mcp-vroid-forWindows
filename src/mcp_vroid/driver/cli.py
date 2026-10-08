@@ -1,6 +1,6 @@
 """vroid-driver CLI:  python -m driver.cli <subcommand>
 
-    launch                      launch VRoid, park it on ws 9, focus, fullscreen
+    launch                      launch, focus and maximise VRoid (ws 9 on Linux)
     shot [tag]                  screenshot the window -> captures/NNN-tag.png
     screen                      print which screen we're on
     text [--region x,y,w,h]     dump every word tesseract sees, with centres
@@ -13,7 +13,7 @@
     slider "Fem Height" 0.6     set a Parameters value
     new-character [Fem|Masc]    start screen -> new model
     export out/spike.vrm        full Export-as-VRM walk
-    restore                     switch back to the workspace you came from
+    restore TOKEN               restore foreground HWND (Windows) or workspace
 
 Every acting subcommand refuses to run unless VRoid Studio is the focused
 window.
