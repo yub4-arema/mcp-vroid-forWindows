@@ -1,8 +1,16 @@
 # mcp-vroid
 
+[English](README.md) | [日本語](README.ja.md)
+
 **Drive VRoid Studio from any MCP client, on Linux/Wayland.** Launch the app,
 look at it, find widgets in the picture, click and type, set parameters, and
 export a `.vrm` — all as MCP tools.
+
+This fork also supports **Windows 10/11 + Steam VRoid Studio** using
+pywinauto/Win32 for input and window management and Pillow for capture. The upstream
+Linux implementation and documentation below are retained. See
+**[Windows quickstart](#windows-quickstart)** for the Windows-specific setup
+and behavior.
 
 ## Why
 
@@ -63,6 +71,8 @@ sudo pacman -S grim tesseract tesseract-data-eng wayland gcc pkgconf
 
 ## Quickstart
 
+The following quickstart is the original **Linux/Hyprland** setup.
+
 ```bash
 git clone https://github.com/nhodges/mcp-vroid
 cd mcp-vroid
@@ -112,6 +122,114 @@ Optional environment variables:
 | `MCP_VROID_OUT` | `$XDG_STATE_HOME/mcp-vroid/out` | default dir for exports/saves |
 | `MCP_VROID_VPOINTER` | `<checkout>/native/vpointer` | path to the pointer helper |
 | `MCP_VROID_MAX_IMAGE_PX` | `1600` | longest edge of images sent to the client (0 = never downscale) |
+
+## Windows quickstart
+
+Use **Windows 10/11**, **Python 3.11+**, [`uv`](https://docs.astral.sh/uv/),
+and the **Steam edition of VRoid Studio** (appid `1486350`). Start with VRoid
+Studio **2.14.0**, **English UI**, and the **primary monitor**; Japanese UI,
+multiple VRoid instances, and secondary-monitor workflows are not part of
+this first Windows port.
+
+Install Tesseract with its **English (`eng`) language data**. The
+[Tesseract installation guide](https://tesseract-ocr.github.io/tessdoc/Installation.html)
+lists Windows distributions. The server checks `MCP_VROID_TESSERACT` first,
+then `PATH`, then `Tesseract-OCR\tesseract.exe` under the standard Program
+Files locations. Setting an explicit path is useful when the MCP client
+passes a limited environment.
+
+```powershell
+git clone https://github.com/yub4-arema/mcp-vroid-forWindows
+cd mcp-vroid-forWindows
+uv sync --python 3.11
+uv run python scripts/smoke_test.py
+```
+
+Windows does **not** need `native/build.sh`, `vpointer`, `grim`, `hyprctl`,
+or X11. The Windows-only direct dependency is `pywinauto`; it brings its
+Win32 dependencies. Pillow, OCR, OpenCV, and the VRoid flows are shared.
+
+Register the same 18 MCP tools with your client:
+
+```json
+{
+  "mcpServers": {
+    "vroid": {
+      "command": "uv",
+      "args": ["run", "--directory", "C:\\path\\to\\mcp-vroid-forWindows", "mcp-vroid"],
+      "env": {
+        "MCP_VROID_TESSERACT": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
+      }
+    }
+  }
+}
+```
+
+Call `vroid_status`, then `vroid_launch`. Windows reuses a verified running
+VRoid process or starts it through Steam and maximizes it. Inputs still go
+to the real desktop: keep VRoid in front while a flow runs. If another app
+takes focus, input is refused. Same-process dialogs owned by VRoid are
+allowed, and an active save dialog is kept in front of the main window.
+Tool calls are serialized so their mouse/keyboard actions cannot overlap.
+Windows may refuse automatic foreground activation under its
+[foreground-window rules](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow).
+In that case, bring VRoid forward manually and retry; no input is sent to
+the other app.
+
+Windows-specific differences from the Linux descriptions below:
+
+* `vroid_release` restores the previously foreground app, if it still
+  exists. Workspace fields are `null`; Windows virtual desktops are not used.
+* Window captures exclude the title bar and borders. Windows `image`,
+  `window`, and absolute `layout` coordinates use **physical pixels**,
+  with capture origin applied for desktop coordinates. DPI awareness is set
+  before the GUI libraries load. Transport downscaling behaves as on Linux.
+* `whole_screen=true` captures the primary monitor, including native save
+  dialogs. It does not bypass the focus guard.
+* VRM export and Save As use native Windows paths, including spaces and
+  Japanese folder names. There is no Proton `Z:\` translation. Existing
+  Save As/export targets cause an error before any input; they are not deleted.
+  Plain Save keeps its usual overwrite behavior for the current project.
+* Artifacts default to `%LOCALAPPDATA%\mcp-vroid\captures` and
+  `%LOCALAPPDATA%\mcp-vroid\out`. `MCP_VROID_CAPTURES` and `MCP_VROID_OUT`
+  still override those locations.
+* `vroid_status` reports the OS/backend, client geometry, maximization,
+  and the Tesseract executable/English data instead of requiring Linux helpers.
+* `vroid_launch(restart=true)` terminates only the verified VRoid PID;
+  as upstream documents, **unsaved work is lost**.
+
+Windows development checks (the unit tests send no actual input):
+
+```powershell
+uv run python -m unittest discover -s tests -v
+uv run python scripts/smoke_test.py --screenshot
+```
+
+For an **attended** test with a disposable new model, run the phases in
+order. They use the public MCP tools and store captures and reports in the
+checkout. The output directory contains a Japanese name and a space to
+exercise native path entry. Use `--out` with a fresh directory for a repeat.
+
+```powershell
+uv run python scripts/windows_acceptance.py create
+uv run python scripts/windows_acceptance.py edit
+uv run python scripts/windows_acceptance.py color
+uv run python scripts/windows_acceptance.py save
+uv run python scripts/windows_acceptance.py export10
+uv run python scripts/windows_acceptance.py export00
+uv run python scripts/windows_acceptance.py reopen
+uv run python scripts/windows_acceptance.py alignment
+```
+
+If your client prevents automatic foreground activation, add
+`--wait-foreground` to a phase, then click VRoid to bring it forward.
+For the scale checks, `alignment --wait-foreground --dpi 96` checks 100%,
+`--dpi 120` checks 125%, and `--dpi 144` checks 150%. Change the Windows
+display setting manually before each check; the script does not change it.
+
+The export phases validate the GLB container and the appropriate VRM
+extension and its `specVersion`. A complete acceptance run also reopens the saved `.vroid` and
+checks input/capture alignment at 100%, 125%, and 150% Windows display scale.
 
 ## Tools
 

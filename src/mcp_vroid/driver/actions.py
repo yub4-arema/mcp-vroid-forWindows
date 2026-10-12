@@ -243,10 +243,20 @@ def export_vrm(out_path: str | Path, avatar_name: str = "SpikeAvatar",
     out_path = Path(out_path).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if out_path.exists():
+        if W.IS_WINDOWS:
+            raise FileExistsError(f"Output already exists: {out_path}")
         out_path.unlink()
 
     s = shot("editor-before-export")
-    _click_frac(s, *F_EXPORT_ICON)
+    if W.IS_WINDOWS:
+        from . import windows
+        dpi = windows.window_dpi()
+        # VRoid 2.14's toolbar is anchored to the right edge, with its share
+        # icon 96 logical px from that edge and 24 logical px from the top.
+        # The Linux fraction assumes the original calibrated window width.
+        I.click(s.image.width - dpi, dpi / 4, space="image", shot=s)
+    else:
+        _click_frac(s, *F_EXPORT_ICON)
     time.sleep(1.5)
 
     s, m = wait_for_text("Export", timeout=15,
@@ -274,7 +284,7 @@ def export_vrm(out_path: str | Path, avatar_name: str = "SpikeAvatar",
         raise RuntimeError("VRM Settings dialog never opened")
 
     select_export_format(version)
-    _fill_vrm_settings(avatar_name, creators)
+    _fill_vrm_settings(avatar_name, creators, version)
 
     # scroll the dialog to the bottom and hit its Export button
     s = shot("vrm-settings-filled")
@@ -312,24 +322,41 @@ def export_vrm(out_path: str | Path, avatar_name: str = "SpikeAvatar",
 def select_export_format(version: str = "1.0") -> None:
     """Pick the VRM spec version radio at the top of the VRM Settings modal.
 
-    "1.0" is VRoid's default, so that case is a no-op; "0.0" clicks the
-    VRM0.0 radio (the circle sits ~20 image px left of its caption).
+    Select explicitly even if the requested version is already the default;
+    VRoid can remember the format from the previous export.
     """
     v = str(version).strip()
     if v in ("1.0", "1", "vrm1.0", "VRM1.0"):
-        return
-    if v not in ("0.0", "0", "vrm0.0", "VRM0.0"):
+        labels = ("VRM1.0", "VRM1.O")
+    elif v in ("0.0", "0", "vrm0.0", "VRM0.0"):
+        labels = ("VRM0.0", "VRMO.0", "VRM0.O", "VRMO.O")
+    else:
         raise ValueError(f"unknown VRM export format {version!r} (use 1.0 or 0.0)")
     s = shot("vrm-export-format")
-    m = L.find_text(s, "VRM0.0") or L.find_text(s, "VRMO.0")
+    region = (int(s.image.width * 0.38), int(s.image.height * 0.25),
+              int(s.image.width * 0.62), int(s.image.height * 0.42))
+    m = next((hit for label in labels
+              if (hit := L.find_text(s, label, exact=True, region=region))), None)
     if m is None:
-        raise RuntimeError("no VRM0.0 radio in the VRM Settings modal")
-    I.click(m.left - int(s.image.width * 0.008), m.center[1],
-            space="image", shot=s)
+        header = L.find_text(s, "Format", exact=True, region=region)
+        if header:
+            row = (region[0], header.top + header.height * 2,
+                   region[2], header.top + header.height * 6)
+            m = next((hit for label in labels if (hit := L.find_text(
+                s, label, exact=True, region=row, psm=7, min_conf=30))), None)
+    if m is None:
+        raise RuntimeError(f"no {labels[0]} radio in the VRM Settings modal")
+    x, y = m.left - int(s.image.width * 0.008), m.center[1]
+    I.click(x, y, space="image", shot=s)
     time.sleep(0.6)
+    selected = shot("vrm-export-format-selected")
+    pad = int(s.image.width * 0.008)
+    if not L.find_color_blobs(selected, min_w=5, min_h=5,
+                              region=(x - pad, y - pad, x + pad, y + pad)):
+        raise RuntimeError(f"{labels[0]} radio was not selected; see {selected.path}")
 
 
-def _fill_vrm_settings(avatar_name: str, creators: str) -> None:
+def _fill_vrm_settings(avatar_name: str, creators: str, version: str = "1.0") -> None:
     """Avatar Name and Creators are required; everything else keeps defaults.
 
     Both captions are matched *exactly* on their distinguishing word: a loose
@@ -337,7 +364,10 @@ def _fill_vrm_settings(avatar_name: str, creators: str) -> None:
     "Creator" also hits "Creator Copyright" - both of which silently type into
     the wrong box and leave Export greyed out.
     """
-    for word, text in (("Name", avatar_name), ("Creators", creators)):
+    fields = {}
+    captions = (("Title", avatar_name), ("Creator", creators)) if str(version).lower() in (
+        "0.0", "0", "vrm0.0") else (("Name", avatar_name), ("Creators", creators))
+    for word, text in captions:
         s = shot(f"vrm-field-{word.lower()}")
         title = L.find_text(s, "Settings", region=(
             int(s.image.width * 0.30), 0, int(s.image.width * 0.70),
@@ -349,16 +379,27 @@ def _fill_vrm_settings(avatar_name: str, creators: str) -> None:
         if not hits:
             raise RuntimeError(f"VRM Settings has no {word!r} caption")
         m = min(hits, key=lambda h: h.top)      # topmost = the caption we want
-        I.click(cx, m.center[1] + int(s.image.height * 0.0271),
-                space="image", shot=s)
+        field_y = m.center[1] + int(s.image.height * 0.0271)
+        fields[word] = (max(0, m.left - m.height),
+                        field_y - int(s.image.height * 0.018),
+                        int(s.image.width * 0.61),
+                        field_y + int(s.image.height * 0.018))
+        I.click(cx, field_y, space="image", shot=s)
         time.sleep(0.3)
         I.clear_field()
         I.type_text(text)
         time.sleep(0.4)
 
     s = shot("vrm-fields-filled")
-    for word, text in (("Name", avatar_name), ("Creators", creators)):
-        if not L.find_text(s, text.split("-")[0][:8]):
+    for word, text in captions:
+        needle = text.split("-")[0][:8]
+        found = L.find_text(s, needle)
+        # Small Windows text/carets can confuse full-frame OCR at low DPI.
+        # Retry only that input row; retain upstream verification on Linux.
+        if not found and W.IS_WINDOWS:
+            found = (L.find_text(s, needle, region=fields[word], psm=7)
+                     or L.find_text(s, needle, region=fields[word], psm=7, upscale=4))
+        if not found:
             raise RuntimeError(
                 f"{word} field did not take {text!r} - see {s.path}")
 
@@ -374,6 +415,9 @@ def _save_dialog(out_path: Path, timeout: float = 60.0) -> None:
     The dialog opens with the file-name field focused and its text selected,
     so typing replaces it; no click needed in the common case.
     """
+    if W.IS_WINDOWS:
+        from . import windows
+        return windows.save_dialog(out_path, timeout)
     win = None
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -421,6 +465,9 @@ def _save_dialog(out_path: Path, timeout: float = 60.0) -> None:
 
 
 def _save_dialog_window():
+    if W.IS_WINDOWS:
+        from . import windows
+        return windows.find_save_dialog()
     for c in W.hyprctl_json("clients"):
         if (c.get("title") or "").strip().lower() in ("export", "save as", "save"):
             return c
@@ -687,6 +734,8 @@ def save_project_as(out_path: str | Path, timeout: float = 60.0) -> Path:
     out_path = Path(out_path).resolve()
     if out_path.suffix.lower() != ".vroid":
         out_path = out_path.with_suffix(".vroid")
+    if W.IS_WINDOWS and out_path.exists():
+        raise FileExistsError(f"Output already exists: {out_path}")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     I.hotkey("ctrl+shift+s")
     time.sleep(1.5)
