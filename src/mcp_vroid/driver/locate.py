@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,7 @@ import numpy as np
 from PIL import Image, ImageOps
 
 from .capture import Shot
+from .paths import tesseract_path
 
 
 @dataclass
@@ -51,12 +53,17 @@ def ocr_words(img: Image.Image | Shot, upscale: float = 2.0,
     if isinstance(img, Shot):
         img = img.image
     prepped = _prep(img, upscale, invert)
+    command = tesseract_path()
+    if command is None:
+        raise RuntimeError("Tesseract not found; install it with eng data or set "
+                           "MCP_VROID_TESSERACT to tesseract.exe")
     with tempfile.TemporaryDirectory() as td:
         p = Path(td) / "ocr.png"
         prepped.save(p)
         out = subprocess.run(
-            ["tesseract", str(p), "stdout", "-l", lang, "--psm", str(psm), "tsv"],
-            capture_output=True, text=True,
+            [command, str(p), "stdout", "-l", lang, "--psm", str(psm), "tsv"],
+            capture_output=True, text=True, encoding="utf-8", check=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
     matches: list[Match] = []
     lines = out.stdout.splitlines()
@@ -200,6 +207,10 @@ def find_color_blobs(img: Image.Image | Shot, rgb=ACCENT, tol: int = 26,
         off = (region[0], region[1])
     a = np.asarray(src.convert("RGB")).astype(np.int16)
     mask = (np.abs(a - np.array(rgb, dtype=np.int16)).max(axis=2) <= tol)
+    if sys.platform == "win32" and tuple(rgb) == tuple(ACCENT):
+        # VRoid 2.14.0's Windows VRM Settings Export pill uses this darker
+        # enabled blue; ordinary toolbar buttons still use ACCENT.
+        mask |= (np.abs(a - np.array((0, 125, 209), dtype=np.int16)).max(axis=2) <= tol)
     mask = mask.astype(np.uint8)
     n, _, stats, cent = cv2.connectedComponentsWithStats(mask, 8)
     out = []

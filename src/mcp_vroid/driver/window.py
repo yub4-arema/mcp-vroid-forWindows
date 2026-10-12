@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 
@@ -13,7 +14,8 @@ STEAM_APPID = "1486350"
 CLASS_HINTS = ("vroidstudio", "vroid studio", f"steam_app_{STEAM_APPID}")
 TITLE_HINTS = ("vroid",)
 
-WORKSPACE = 9  # dedicated workspace we drive VRoid on
+IS_WINDOWS = sys.platform == "win32"
+WORKSPACE = None if IS_WINDOWS else 9
 
 
 def hyprctl(*args: str) -> str:
@@ -54,9 +56,11 @@ class Window:
     y: int
     w: int
     h: int
-    workspace: int
+    workspace: int | None
     focused: bool
     fullscreen: bool = False
+    maximized: bool = False
+    pid: int | None = None
 
     @property
     def geometry(self) -> tuple[int, int, int, int]:
@@ -83,6 +87,9 @@ def _mk(c: dict) -> Window:
 
 def find_window() -> Window | None:
     """Return the VRoid Studio window, or None. Never matches anything else."""
+    if IS_WINDOWS:
+        from . import windows
+        return windows.find_window()
     for c in _clients():
         cls = (c.get("class") or "").lower()
         title = (c.get("title") or "").lower()
@@ -95,6 +102,9 @@ def find_window() -> Window | None:
 
 
 def is_vroid_focused() -> bool:
+    if IS_WINDOWS:
+        from . import windows
+        return windows.is_vroid_focused()
     try:
         a = hyprctl_json("activewindow")
     except subprocess.CalledProcessError:
@@ -107,6 +117,9 @@ def is_vroid_focused() -> bool:
 
 
 def assert_vroid_focused() -> None:
+    if IS_WINDOWS:
+        from . import windows
+        return windows.assert_vroid_focused()
     if not is_vroid_focused():
         a = hyprctl_json("activewindow")
         raise RuntimeError(
@@ -116,6 +129,9 @@ def assert_vroid_focused() -> None:
 
 
 def launch() -> None:
+    if IS_WINDOWS:
+        from . import windows
+        return windows.launch()
     subprocess.Popen(
         ["steam", f"steam://rungameid/{STEAM_APPID}"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -142,20 +158,28 @@ def launch_and_wait(timeout: float = 240.0) -> Window:
 
 # --- workspace juggling -----------------------------------------------------
 
-def active_workspace() -> int:
+def active_workspace() -> int | None:
+    if IS_WINDOWS:
+        return None
     return hyprctl_json("activeworkspace")["id"]
 
 
 def park(win: Window, workspace: int = WORKSPACE) -> None:
     """Move VRoid to its own workspace without switching to it."""
+    if IS_WINDOWS:
+        return
     if win.workspace != workspace:
         dispatch(f"hl.dsp.window.move({{ workspace = {workspace}, "
                  f"silent = true, window = {_win_expr(win)} }})")
         time.sleep(0.3)
 
 
-def enter(workspace: int = WORKSPACE) -> int:
+def enter(workspace: int = WORKSPACE) -> int | None:
     """Switch to the driving workspace; returns the workspace we came from."""
+    if IS_WINDOWS:
+        from . import windows
+        windows.remember_previous()
+        return None
     prev = active_workspace()
     if prev != workspace:
         dispatch(f"hl.dsp.focus({{ workspace = {workspace} }})")
@@ -164,6 +188,10 @@ def enter(workspace: int = WORKSPACE) -> int:
 
 
 def leave(prev: int) -> None:
+    if IS_WINDOWS:
+        from . import windows
+        windows.release()
+        return
     if active_workspace() != prev:
         dispatch(f"hl.dsp.focus({{ workspace = {prev} }})")
 
@@ -174,6 +202,8 @@ def dismiss_screensaver() -> bool:
     Only ever closes a window whose class contains "screensaver" - the same
     thing any keypress would do, but without typing into an unknown window.
     """
+    if IS_WINDOWS:
+        return False
     for c in _clients():
         if "screensaver" in (c.get("class") or "").lower():
             dispatch(f"hl.dsp.window.close({{ window = "
@@ -184,6 +214,9 @@ def dismiss_screensaver() -> bool:
 
 
 def focus(win: Window | None = None) -> Window:
+    if IS_WINDOWS:
+        from . import windows
+        return windows.focus(win)
     win = win or find_window()
     if win is None:
         raise RuntimeError("VRoid Studio window not found")
@@ -194,6 +227,9 @@ def focus(win: Window | None = None) -> Window:
 
 def fullscreen(win: Window | None = None) -> Window:
     """Make VRoid maximised/fullscreen so geometry is stable across runs."""
+    if IS_WINDOWS:
+        from . import windows
+        return windows.fullscreen(win)
     win = focus(win)
     if not win.fullscreen:
         dispatch("hl.dsp.window.fullscreen()")
@@ -201,11 +237,14 @@ def fullscreen(win: Window | None = None) -> Window:
     return find_window() or win
 
 
-def prepare(timeout: float = 240.0) -> tuple[Window, int]:
+def prepare(timeout: float = 240.0) -> tuple[Window, int | None]:
     """Launch if needed, park on our workspace, switch there, focus, maximise.
 
     Returns (window, previous_workspace) so the caller can restore.
     """
+    if IS_WINDOWS:
+        from . import windows
+        return windows.prepare(timeout)
     win = launch_and_wait(timeout)
     dismiss_screensaver()
     park(win)

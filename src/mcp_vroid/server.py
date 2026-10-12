@@ -1,4 +1,4 @@
-"""MCP server (stdio) that drives VRoid Studio's GUI on Hyprland/Wayland.
+"""MCP server (stdio) that drives VRoid Studio on Windows or Hyprland/Wayland.
 
 Every tool is a thin, well-described wrapper over `mcp_vroid.driver`, which
 does the actual see -> locate -> act loop: `grim` screenshots, tesseract OCR
@@ -15,6 +15,7 @@ Design notes for anyone reading the tool list:
   guard lives in the driver and every acting tool re-checks it.
 * The server parks VRoid on its own Hyprland workspace (9) and remembers the
   workspace the user was on, so `vroid_release` can put them back.
+  On Windows it maximizes the client and remembers the foreground window.
 """
 
 from __future__ import annotations
@@ -42,13 +43,13 @@ from .driver import capture as C  # noqa: E402
 from .driver import input as I  # noqa: E402
 from .driver import locate as L  # noqa: E402
 from .driver import window as W  # noqa: E402
-from .driver.paths import CAPTURES, OUT, VPOINTER  # noqa: E402
+from .driver.paths import CAPTURES, OUT, VPOINTER, tesseract_status  # noqa: E402
 
 server = MCPServer(
     name="vroid",
     version="0.1.0",
     instructions=(
-        "Drives the VRoid Studio desktop app (Steam/Proton) on Hyprland by "
+        "Drives VRoid Studio on Windows (Steam) or Linux (Steam/Proton, Hyprland) by "
         "screenshotting it, locating widgets with OCR, and injecting real "
         "pointer/keyboard events.\n\n"
         "The working loop is: vroid_launch -> vroid_screenshot (LOOK at the "
@@ -72,20 +73,21 @@ server = MCPServer(
 
 _prev_workspace: int | None = None
 MAX_IMAGE_EDGE = int(os.environ.get("MCP_VROID_MAX_IMAGE_PX", "1600"))
+_driver_lock = anyio.Lock()
 
 
 async def _blocking(fn, *args, **kwargs):
     """Run a blocking driver call off the event loop."""
-    return await anyio.to_thread.run_sync(functools.partial(fn, *args, **kwargs))
+    # One desktop/cursor: overlapping tool calls must never interleave inputs.
+    async with _driver_lock:
+        return await anyio.to_thread.run_sync(functools.partial(fn, *args, **kwargs))
 
 
 def _require_window() -> W.Window:
     win = W.find_window()
     if win is None:
         raise RuntimeError(
-            "VRoid Studio is not running (no Hyprland window with class "
-            "steam_app_1486350 / title 'VRoid Studio ...'). Call vroid_launch "
-            "first."
+            "VRoid Studio window not found. Call vroid_launch first."
         )
     return win
 
@@ -121,6 +123,7 @@ def _win_dict(win: W.Window | None) -> dict[str, Any]:
         "title": win.title,
         "workspace": win.workspace,
         "fullscreen": win.fullscreen,
+        "maximized": win.maximized,
         "focused": win.focused,
         "geometry_layout": {"x": win.x, "y": win.y, "w": win.w, "h": win.h},
     }
@@ -182,9 +185,13 @@ async def vroid_launch(
         float, Field(description="Seconds to wait for the window to appear.")
     ] = 240.0,
 ) -> dict[str, Any]:
-    """Start VRoid Studio (Steam appid 1486350, Proton) and take control of it.
+    """Start VRoid Studio via Steam (appid 1486350) and take control of it.
 
-    Idempotent: if the window already exists it is reused, not relaunched.
+    Windows: reuse/start the verified VRoid process, maximize the client,
+    and remember the previously foreground app for vroid_release. An active
+    owned dialog stays in front. No virtual-desktop operations are performed.
+
+    Linux: idempotent; if the window already exists it is reused, not relaunched.
     Then the window is parked on Hyprland workspace 9, the workspace the user
     was on is remembered (vroid_release puts them back), and the window is
     focused and fullscreened so its geometry - and therefore every coordinate
@@ -197,6 +204,16 @@ async def vroid_launch(
 
     def work() -> dict[str, Any]:
         global _prev_workspace
+        if W.IS_WINDOWS:
+            from .driver import windows
+            windows.remember_previous()
+            if restart:
+                windows.restart()
+            win, _ = W.prepare(timeout)
+            return {**_win_dict(win), "restarted": bool(restart),
+                    "driving_workspace": None, "previous_workspace": None,
+                    "previous_window": windows.previous_window(),
+                    "captures_dir": str(CAPTURES)}
         if restart and W.find_window():
             subprocess.run(["pkill", "-f", "VRoidStudio.exe"],
                            capture_output=True)
@@ -226,11 +243,16 @@ async def vroid_status() -> dict[str, Any]:
 
     Also reports whether the external helpers this server needs are present:
     the vpointer binary (built by native/build.sh), grim, tesseract, hyprctl.
+    Windows reports pywinauto/Pillow and the Tesseract path/eng data; workspace
+    fields are null and Linux helpers are not required.
     """
 
     def work() -> dict[str, Any]:
         win = W.find_window()
+        ocr = tesseract_status()
         out: dict[str, Any] = {
+            "os": "windows" if W.IS_WINDOWS else "linux",
+            "backend": "pywinauto/pillow" if W.IS_WINDOWS else "hyprland/wayland/xtest",
             "window": _win_dict(win),
             "focused": W.is_vroid_focused(),
             "active_workspace": W.active_workspace(),
@@ -242,10 +264,15 @@ async def vroid_status() -> dict[str, Any]:
             "helpers": {
                 "vpointer": {"path": str(VPOINTER), "present": VPOINTER.exists()},
                 "grim": bool(shutil.which("grim")),
-                "tesseract": bool(shutil.which("tesseract")),
+                "tesseract": ocr["present"],
                 "hyprctl": bool(shutil.which("hyprctl")),
             },
+            "tesseract": ocr,
         }
+        if W.IS_WINDOWS:
+            from .driver import windows
+            out["previous_window"] = windows.previous_window()
+            out["helpers"] = {"tesseract": ocr}
         if win is not None:
             try:
                 out["capture_scale"] = C.output_scale()
@@ -258,14 +285,18 @@ async def vroid_status() -> dict[str, Any]:
 
 @server.tool()
 async def vroid_release() -> dict[str, Any]:
-    """Hand the desktop back: switch to the workspace the user was on before.
+    """Hand the desktop back to the previous app (Windows) or workspace (Linux).
 
     Leaves VRoid running on workspace 9. Call this when you are done with a
     session, or before handing control back to the human.
+    On Windows, restores the remembered foreground window if it still exists.
     """
 
     def work() -> dict[str, Any]:
         global _prev_workspace
+        if W.IS_WINDOWS:
+            from .driver import windows
+            return windows.release()
         prev = _prev_workspace
         if prev is not None:
             W.leave(prev)
@@ -294,7 +325,7 @@ async def vroid_screenshot(
     whole_screen: Annotated[
         bool,
         Field(description="Capture the whole output instead of just the VRoid "
-                          "window - needed for the Wine save/export dialog, "
+                          "window - useful for native save/export dialogs, "
                           "which is a separate window."),
     ] = False,
     full_resolution: Annotated[
@@ -352,6 +383,9 @@ async def vroid_screenshot(
                "the returned metadata are absolute image px of the full "
                "capture only if you add the region origin back)"
                if region else "")
+            + ("\nWhole-screen coordinates use space='layout' (after undoing "
+               "downscale); space='image' is relative to the VRoid window."
+               if whole_screen else "")
         )
         return [Image(data=_png_bytes(sent), format="png"), note, meta]
 
@@ -475,8 +509,9 @@ async def vroid_find_button(
 SPACE_DOC = (
     "'image' = pixels of a window capture (what vroid_screenshot / "
     "vroid_find_* report - the default, and almost always what you want); "
-    "'window' = Hyprland layout units relative to the window's top-left; "
-    "'layout' = absolute Hyprland layout units of the whole output."
+    "'window' = coordinates relative to the client/window top-left; "
+    "'layout' = absolute desktop coordinates. Windows uses physical pixels; "
+    "Hyprland uses logical layout units."
 )
 
 
@@ -501,6 +536,8 @@ async def vroid_click(
     ] = False,
 ) -> dict[str, Any]:
     """Click a point in the VRoid window with the real compositor cursor.
+
+    Windows uses the real desktop cursor and physical client-area pixels.
 
     Refuses unless VRoid Studio is the focused window; it focuses the window
     itself first (workspace 9, fullscreen) and raises rather than clicking
@@ -588,6 +625,7 @@ async def vroid_scroll(
     Sent as X11 button 4/5 (6/7 horizontally): VRoid is an XWayland client and
     ignores Wayland virtual-pointer axis events, so this is the only wheel
     that works on it.
+    Windows uses native wheel events; positive dy still scrolls down.
 
     Long Parameters lists need this - a label that vroid_find_text cannot see
     is usually just below the fold. vroid_set_slider scrolls to its own row
@@ -625,6 +663,7 @@ async def vroid_type(
     caret is. Keystrokes go through X11 XTEST because the Wayland virtual
     keyboard is mis-read by this Proton client (a whole string arrives as a
     single character).
+    Windows uses pywinauto Unicode input; text is literal, not shortcut syntax.
 
     Always screenshot afterwards to confirm the text landed in the field you
     meant: VRoid's forms have several boxes with near-identical captions, and
@@ -811,9 +850,9 @@ async def vroid_current_screen() -> dict[str, Any]:
 async def vroid_export_vrm(
     path: Annotated[
         str,
-        Field(description="Where to write the .vrm, as a normal Linux path. "
-                          "Translated to the Proton prefix's Z:\\ mapping for "
-                          "the Wine save dialog."),
+        Field(description="Where to write the .vrm, as a native OS path. "
+                          "Windows uses it directly; Linux translates it to "
+                          "Proton's Z:\\ mapping. Relative paths use the out dir."),
     ],
     avatar_name: Annotated[
         str,
@@ -842,6 +881,8 @@ async def vroid_export_vrm(
     format, scrolls to the bottom and clicks Export) -> Wine's save dialog
     (types a Z:\\ path and presses Return) -> waits for the file size to stop
     growing.
+    Windows uses the owned native save dialog and a Windows path. Existing
+    Windows export targets cause an error without deleting the file.
 
     Must be started from the EDITOR screen with a model loaded. Takes 30 s to
     a few minutes depending on the model. Returns the written path and its
@@ -851,10 +892,12 @@ async def vroid_export_vrm(
     """
 
     def work() -> dict[str, Any]:
-        _ensure_ready()
         target = Path(path).expanduser()
         if not target.is_absolute():
             target = OUT / target
+        if W.IS_WINDOWS and target.exists():
+            raise FileExistsError(f"Output already exists: {target}")
+        _ensure_ready()
         written = A.export_vrm(target, avatar_name=avatar_name,
                                creators=creator, timeout=timeout,
                                version=version)
@@ -871,7 +914,7 @@ async def vroid_save_project(
         str | None,
         Field(description="Save As target: a bare name (written into the "
                           "server's out dir as <name>.vroid) or an absolute "
-                          "Linux path. Omit to do a plain Save, which "
+                          "native OS path. Omit to do a plain Save, which "
                           "silently overwrites the project's existing file."),
     ] = None,
     timeout: Annotated[
@@ -885,24 +928,31 @@ async def vroid_save_project(
     the hamburger menu and clicks Save, which overwrites the project's
     existing file and opens the Wine dialog only if the project has never
     been saved (in that case call this again WITH a name).
+    Windows reuses the menu for plain Save and its owned native dialog for Save As.
+    An existing Windows Save As target causes an error before input.
 
     Worth doing before any risky experiment: nothing else in this server
     persists your work, and vroid_launch(restart=true) discards it.
     """
 
     def work() -> dict[str, Any]:
-        _ensure_ready()
         if name:
             target = Path(name).expanduser()
             if not target.is_absolute():
                 target = OUT / target
+            if target.suffix.lower() != ".vroid":
+                target = target.with_suffix(".vroid")
+            if W.IS_WINDOWS and target.exists():
+                raise FileExistsError(f"Output already exists: {target}")
+            _ensure_ready()
             written = A.save_project_as(target, timeout=timeout)
             return {"saved": str(written), "bytes": written.stat().st_size,
                     "mode": "save-as"}
+        _ensure_ready()
         A.save_project()
         return {"saved": None, "mode": "save",
                 "note": "plain Save; if this project had never been saved a "
-                        "Wine dialog is now open - screenshot with "
+                        "save dialog is now open - screenshot with "
                         "whole_screen=true and check."}
 
     return await _blocking(work)

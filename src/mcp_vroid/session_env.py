@@ -15,7 +15,32 @@ full session env changes nothing here.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
+
+_dpi_initialized = False
+
+
+def ensure_windows_dpi() -> None:
+    """Select physical-pixel coordinates before GUI libraries set DPI defaults."""
+    global _dpi_initialized
+    if _dpi_initialized:
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.SetProcessDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+    user32.SetProcessDpiAwarenessContext.restype = wintypes.BOOL
+    if not user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4)):
+        # A manifest or embedding host may have selected per-monitor awareness.
+        user32.GetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+        user32.GetAwarenessFromDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+        if user32.GetAwarenessFromDpiAwarenessContext(
+                user32.GetThreadDpiAwarenessContext()) != 2:
+            raise RuntimeError("Windows DPI awareness could not be enabled; "
+                               "start mcp-vroid in a fresh Python process")
+    _dpi_initialized = True
 
 
 def _runtime_dir() -> Path:
@@ -35,6 +60,9 @@ def _newest(paths: list[Path]) -> Path | None:
 
 def ensure_session_env() -> dict[str, str]:
     """Fill in the missing session variables; returns what this call set."""
+    if sys.platform == "win32":
+        ensure_windows_dpi()
+        return {}
     filled: dict[str, str] = {}
     rd = _runtime_dir()
 

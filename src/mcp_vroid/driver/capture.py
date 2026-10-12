@@ -18,6 +18,8 @@ from .paths import CAPTURES
 
 
 def output_scale() -> float:
+    if W.IS_WINDOWS:
+        return 1.0
     mons = W.hyprctl_json("monitors")
     return float(mons[0].get("scale", 1.0)) if mons else 1.0
 
@@ -62,6 +64,9 @@ class Shot:
 def grab_region(x: int, y: int, w: int, h: int, tag: str = "",
                 path: Path | None = None) -> Shot:
     path = path or next_capture_path(tag)
+    if W.IS_WINDOWS:
+        from . import windows
+        return windows.grab_region(x, y, w, h, path)
     scale = output_scale()
     subprocess.run(
         ["grim", "-g", f"{x},{y} {w}x{h}", str(path)],
@@ -82,6 +87,9 @@ def grab_window(win: W.Window | None = None, tag: str = "") -> Shot:
 
 
 def grab_screen(tag: str = "") -> Shot:
+    if W.IS_WINDOWS:
+        from . import windows
+        return grab_region(*windows.screen_geometry(), tag=tag)
     mon = W.hyprctl_json("monitors")[0]
     scale = float(mon.get("scale", 1.0))
     w = int(round(mon["width"] / scale))

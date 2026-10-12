@@ -71,6 +71,9 @@ def _resolve(x: float, y: float, space: str, shot=None) -> tuple[float, float]:
 
 def move(x: float, y: float, space: str = "window", shot=None) -> None:
     lx, ly = _resolve(x, y, space, shot)
+    if W.IS_WINDOWS:
+        from . import windows
+        return windows.move(lx, ly)
     _run_pointer(f"move {lx:.0f} {ly:.0f}\n")
 
 
@@ -79,6 +82,11 @@ def click(x: float, y: float, button: str = "left", space: str = "window",
     """Move (in a few steps, so hover states fire) then click."""
     _guard()
     lx, ly = _resolve(x, y, space, shot)
+    if W.IS_WINDOWS:
+        from . import windows
+        windows.click(lx, ly, BUTTONS.get(button, "left"), moves)
+        time.sleep(settle)
+        return
     cur = W.hyprctl("cursorpos").strip().split(",")
     try:
         cx, cy = float(cur[0]), float(cur[1])
@@ -95,9 +103,17 @@ def click(x: float, y: float, button: str = "left", space: str = "window",
 
 
 def double_click(x: float, y: float, **kw) -> None:
+    if W.IS_WINDOWS:
+        from . import windows
+        _guard()
+        lx, ly = _resolve(x, y, kw.get("space", "window"), kw.get("shot"))
+        windows.click(lx, ly, BUTTONS.get(kw.get("button", "left"), "left"),
+                      kw.get("moves", 3), double=True)
+        time.sleep(kw.get("settle", 0.35))
+        return
     click(x, y, **kw)
     time.sleep(0.05)
-    click(x, y, settle=kw.get("settle", 0.35))
+    click(x, y, **kw)
 
 
 def drag(x1: float, y1: float, x2: float, y2: float, button: str = "left",
@@ -108,6 +124,11 @@ def drag(x1: float, y1: float, x2: float, y2: float, button: str = "left",
     ax, ay = _resolve(x1, y1, space, shot)
     bx, by = _resolve(x2, y2, space, shot)
     b = BUTTONS.get(button, "left")
+    if W.IS_WINDOWS:
+        from . import windows
+        windows.drag(ax, ay, bx, by, b, steps)
+        time.sleep(settle)
+        return
     lines = [f"move {ax:.0f} {ay:.0f}", "sleep 120", f"down {b}", "sleep 120"]
     for i in range(1, steps + 1):
         t = i / steps
@@ -130,6 +151,11 @@ def scroll(ticks: int, x: float | None = None, y: float | None = None,
     if x is not None and y is not None:
         move(x, y, space, shot)
         time.sleep(0.2)
+    if W.IS_WINDOWS:
+        from . import windows
+        windows.scroll(ticks)
+        time.sleep(settle)
+        return
     if backend == "x11":
         from Xlib import X
         from Xlib.ext import xtest
@@ -159,6 +185,11 @@ def hscroll(ticks: int, x: float | None = None, y: float | None = None,
     if x is not None and y is not None:
         move(x, y, space, shot)
         time.sleep(0.2)
+    if W.IS_WINDOWS:
+        from . import windows
+        windows.scroll(ticks, horizontal=True)
+        time.sleep(settle)
+        return
     from Xlib import X
     from Xlib.ext import xtest
     d = _display()
@@ -255,6 +286,11 @@ def _remap_spare(ks: int) -> int:
 def type_text(text: str, delay_ms: int = 22) -> None:
     """Type a literal string into the focused widget (XTEST)."""
     _guard()
+    if W.IS_WINDOWS:
+        from . import windows
+        windows.type_text(text, delay_ms)
+        time.sleep(0.15)
+        return
     d = _display()
     shift = d.keysym_to_keycode(_keysym("Shift_L"))
     spare_used = False
@@ -277,6 +313,11 @@ def type_text(text: str, delay_ms: int = 22) -> None:
 def key(name: str, mods: list[str] | None = None, times: int = 1) -> None:
     """Press a named key: Return, Escape, Tab, BackSpace, a, ... with mods."""
     _guard()
+    if W.IS_WINDOWS:
+        from . import windows
+        windows.key(name, mods, times)
+        time.sleep(0.12)
+        return
     d = _display()
     ks = _keysym(name)
     code, need_shift = _keycode(ks)
@@ -305,6 +346,8 @@ def hotkey(combo: str) -> None:
 
 def x_focus_ok() -> bool:
     """True when the X input focus is on the VRoid window."""
+    if W.IS_WINDOWS:
+        return W.is_vroid_focused()
     try:
         name = _display().get_input_focus().focus.get_wm_name() or ""
     except Exception:
