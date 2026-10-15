@@ -237,7 +237,20 @@ def fullscreen(win=None):
 
 
 def launch() -> None:
-    os.startfile("steam://rungameid/1486350")
+    """Start VRoid via Steam, or the executable named by MCP_VROID_EXE.
+
+    MCP_VROID_EXE covers non-Steam installs such as the BOOTH edition.
+    """
+    exe = os.environ.get("MCP_VROID_EXE")
+    if not exe:
+        os.startfile("steam://rungameid/1486350")
+        return
+    path = Path(exe).expanduser()
+    if not path.is_file():
+        raise FileNotFoundError(f"MCP_VROID_EXE does not point to a file: {exe}")
+    import subprocess
+    subprocess.Popen([str(path)], cwd=str(path.parent),
+                     creationflags=subprocess.DETACHED_PROCESS)
 
 
 def restart() -> None:

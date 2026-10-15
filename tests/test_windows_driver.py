@@ -197,6 +197,37 @@ class ReleaseBehavior(unittest.TestCase):
             self.assertFalse(windows._remembered)
 
 
+class LaunchBehavior(unittest.TestCase):
+    def test_launch_defaults_to_steam(self):
+        env = {k: v for k, v in os.environ.items() if k != "MCP_VROID_EXE"}
+        with patch.dict(os.environ, env, clear=True), \
+                patch("os.startfile", create=True) as start, \
+                patch("subprocess.Popen") as popen:
+            windows.launch()
+        start.assert_called_once_with("steam://rungameid/1486350")
+        popen.assert_not_called()
+
+    def test_launch_uses_configured_exe(self):
+        with tempfile.TemporaryDirectory() as temp:
+            exe = Path(temp) / "VRoidStudio.exe"
+            exe.touch()
+            with patch.dict(os.environ, {"MCP_VROID_EXE": str(exe)}), \
+                    patch("os.startfile", create=True) as start, \
+                    patch("subprocess.DETACHED_PROCESS", 8, create=True), \
+                    patch("subprocess.Popen") as popen:
+                windows.launch()
+            start.assert_not_called()
+            popen.assert_called_once_with([str(exe)], cwd=str(exe.parent),
+                                          creationflags=8)
+
+    def test_launch_rejects_missing_exe(self):
+        with patch.dict(os.environ, {"MCP_VROID_EXE": "C:/missing/VRoidStudio.exe"}), \
+                patch("subprocess.Popen") as popen:
+            with self.assertRaisesRegex(FileNotFoundError, "MCP_VROID_EXE"):
+                windows.launch()
+        popen.assert_not_called()
+
+
 class WorkflowVerification(unittest.TestCase):
     def test_small_text_retry_is_windows_only(self):
         image = capture.Shot(Image.new("RGB", (2000, 1000)), Path("fields.png"), 0, 0, 1)

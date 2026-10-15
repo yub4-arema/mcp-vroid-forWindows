@@ -166,7 +166,9 @@ Register the same 18 MCP tools with your client:
 ```
 
 Call `vroid_status`, then `vroid_launch`. Windows reuses a verified running
-VRoid process or starts it through Steam and maximizes it. Inputs still go
+VRoid process or starts it through Steam and maximizes it. For a non-Steam
+install (for example the BOOTH edition), set `MCP_VROID_EXE` to the full
+path of `VRoidStudio.exe` and it is started directly instead. Inputs still go
 to the real desktop: keep VRoid in front while a flow runs. If another app
 takes focus, input is refused. Same-process dialogs owned by VRoid are
 allowed, and an active save dialog is kept in front of the main window.

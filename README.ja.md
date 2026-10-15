@@ -91,7 +91,7 @@ Tesseractの検出順序は、`MCP_VROID_TESSERACT`、`PATH`、標準のProgram 
 
 ### Windowsでの動作
 
-- 実行プロセスを確認した既存のVRoidウィンドウを再利用します。起動していなければSteam経由で起動し、最大化します。
+- 実行プロセスを確認した既存のVRoidウィンドウを再利用します。起動していなければSteam経由で起動し、最大化します。BOOTH版などSteam以外で導入した場合は、`MCP_VROID_EXE` に `VRoidStudio.exe` のフルパスを指定すると、そのexeを直接起動します。
 - 操作前に、VRoid本体または同じプロセスに属する所有ダイアログが前面にあることを確認します。前面化に失敗した場合は入力せずエラーを返します。操作中はVRoidを前面に保ってください。
 - Windowsの[前面ウィンドウに関する制限](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow)によって自動で前面にできない場合は、VRoidを手動で前面にして再実行します。
 - `vroid_release` は、操作開始前に記憶したウィンドウがまだ存在する場合、そのウィンドウへ戻します。Windowsでは仮想デスクトップを操作せず、workspace関連の値は `null` になります。
@@ -109,6 +109,7 @@ Tesseractの検出順序は、`MCP_VROID_TESSERACT`、`PATH`、標準のProgram 
 | `MCP_VROID_CAPTURES` | `%LOCALAPPDATA%\mcp-vroid\captures` | スクリーンショットの保存先 |
 | `MCP_VROID_OUT` | `%LOCALAPPDATA%\mcp-vroid\out` | プロジェクト・VRMの既定の保存先 |
 | `MCP_VROID_TESSERACT` | 自動検出 | Tesseract実行ファイルの指定 |
+| `MCP_VROID_EXE` | 未設定（Steam経由で起動） | Steam以外で導入したVRoid Studioの実行ファイル |
 | `MCP_VROID_MAX_IMAGE_PX` | `1600` | クライアントへ送る画像の最長辺。`0` は縮小しない |
 
 保存先を環境変数で指定した場合は、その指定を優先します。
