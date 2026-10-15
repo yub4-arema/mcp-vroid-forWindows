@@ -306,11 +306,6 @@ src/mcp_vroid/driver/
 native/vpointer.c            Linux用のWaylandポインターヘルパー
 ```
 
-## コントリビュート
-
-IssueやPull Requestを歓迎します。別のwlroots系コンポジターへの対応、別の解像度・DPI・日本語UIへの対応、バグ報告などが役立ちます。
-
-バグ報告には、OS、VRoid StudioのバージョンとUI言語、モニターの解像度・拡大率、`vroid_status` の出力を添えてください。Linuxではコンポジターも記載します。失敗した場面の撮影画像があると調査しやすくなりますが、公開前に個人情報が写っていないか確認してください。
 
 ## フォーク元とライセンス
 
