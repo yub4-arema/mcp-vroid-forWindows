@@ -33,6 +33,13 @@ class Coordinates(unittest.TestCase):
             self.assertEqual((shot.ox, shot.oy, shot.scale), (10, 25, 1))
             self.assertTrue(path.exists())
 
+    def test_screen_geometry_is_virtual_screen(self):
+        metrics = {76: -1920, 77: -200, 78: 4480, 79: 1640}
+        win32api = MagicMock()
+        win32api.GetSystemMetrics.side_effect = metrics.__getitem__
+        with patch.dict("sys.modules", {"win32api": win32api}):
+            self.assertEqual(windows.screen_geometry(), (-1920, -200, 4480, 1640))
+
     def test_double_click_preserves_image_space_and_button(self):
         shot = capture.Shot(Image.new("RGB", (100, 100)), Path("shot.png"), 12, 35, 1)
         with patch.object(window, "IS_WINDOWS", True), patch.object(inputs, "_guard"), \
@@ -174,6 +181,51 @@ class WindowIdentity(unittest.TestCase):
             gui.return_value.IsWindow.return_value = True
             self.assertIsNone(windows.release()["restored_window"])
             focus.assert_not_called()
+
+
+class ReleaseBehavior(unittest.TestCase):
+    def test_release_survives_refused_focus(self):
+        with patch.object(windows, "_previous_window", (10, 123)), \
+                patch.object(windows, "_remembered", True), \
+                patch.object(windows, "_gui") as gui, \
+                patch.object(windows, "_pid", return_value=123), \
+                patch.object(windows, "_focus_handle",
+                             side_effect=RuntimeError("refused")):
+            gui.return_value.IsWindow.return_value = True
+            self.assertIsNone(windows.release()["restored_window"])
+            self.assertIsNone(windows._previous_window)
+            self.assertFalse(windows._remembered)
+
+
+class LaunchBehavior(unittest.TestCase):
+    def test_launch_defaults_to_steam(self):
+        env = {k: v for k, v in os.environ.items() if k != "MCP_VROID_EXE"}
+        with patch.dict(os.environ, env, clear=True), \
+                patch("os.startfile", create=True) as start, \
+                patch("subprocess.Popen") as popen:
+            windows.launch()
+        start.assert_called_once_with("steam://rungameid/1486350")
+        popen.assert_not_called()
+
+    def test_launch_uses_configured_exe(self):
+        with tempfile.TemporaryDirectory() as temp:
+            exe = Path(temp) / "VRoidStudio.exe"
+            exe.touch()
+            with patch.dict(os.environ, {"MCP_VROID_EXE": str(exe)}), \
+                    patch("os.startfile", create=True) as start, \
+                    patch("subprocess.DETACHED_PROCESS", 8, create=True), \
+                    patch("subprocess.Popen") as popen:
+                windows.launch()
+            start.assert_not_called()
+            popen.assert_called_once_with([str(exe)], cwd=str(exe.parent),
+                                          creationflags=8)
+
+    def test_launch_rejects_missing_exe(self):
+        with patch.dict(os.environ, {"MCP_VROID_EXE": "C:/missing/VRoidStudio.exe"}), \
+                patch("subprocess.Popen") as popen:
+            with self.assertRaisesRegex(FileNotFoundError, "MCP_VROID_EXE"):
+                windows.launch()
+        popen.assert_not_called()
 
 
 class WorkflowVerification(unittest.TestCase):

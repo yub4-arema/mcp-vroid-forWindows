@@ -2,15 +2,16 @@
 
 [English](README.md) | [日本語](README.ja.md)
 
-**Drive VRoid Studio from any MCP client, on Linux/Wayland.** Launch the app,
-look at it, find widgets in the picture, click and type, set parameters, and
-export a `.vrm` — all as MCP tools.
+**Drive VRoid Studio from any MCP client, on Windows or Linux/Wayland.**
+Launch the app, look at it, find widgets in the picture, click and type, set
+parameters, and export a `.vrm` — all as MCP tools.
 
-This fork also supports **Windows 10/11 + Steam VRoid Studio** using
-pywinauto/Win32 for input and window management and Pillow for capture. The upstream
-Linux implementation and documentation below are retained. See
-**[Windows quickstart](#windows-quickstart)** for the Windows-specific setup
-and behavior.
+This fork of [nhodges/mcp-vroid](https://github.com/nhodges/mcp-vroid) adds
+**Windows 10/11** support, using pywinauto/Win32 for input and window
+management and Pillow for capture. The upstream Linux implementation and
+documentation below are retained. See **[Windows quickstart](#windows-quickstart)**
+for the Windows-specific setup and behavior, and
+**[Linux quickstart](#linux-quickstart)** for Linux/Hyprland.
 
 ## Why
 
@@ -46,9 +47,11 @@ walks the whole flow, including Wine's save dialog):
 
 ![The Export as VRM screen with the VRM Settings modal, required fields being typed](docs/export-vrm.png)
 
-## Requirements
+## Requirements (Linux)
 
-Developed and tested on **Arch Linux + Hyprland**, with VRoid Studio 2.14.0
+Windows requirements are listed in the [Windows quickstart](#windows-quickstart).
+
+The Linux backend was developed and tested on **Arch Linux + Hyprland**, with VRoid Studio 2.14.0
 (English UI) running under **Steam/Proton**. What is actually load-bearing:
 
 | | needed for | how portable |
@@ -69,18 +72,18 @@ for window management. On Arch:
 sudo pacman -S grim tesseract tesseract-data-eng wayland gcc pkgconf
 ```
 
-## Quickstart
+## Linux quickstart
 
 The following quickstart is the original **Linux/Hyprland** setup.
 
 ```bash
-git clone https://github.com/nhodges/mcp-vroid
-cd mcp-vroid
+git clone https://github.com/yub4-arema/mcp-vroid-forWindows
+cd mcp-vroid-forWindows
 uv sync                 # virtualenv + dependencies
-bash native/build.sh    # builds native/vpointer  <-- REQUIRED, not optional
+bash native/build.sh    # builds native/vpointer  <-- REQUIRED on Linux only
 ```
 
-`native/build.sh` compiles a ~150-line C client for the Wayland
+**On Linux**, `native/build.sh` is required, not optional. It compiles a ~150-line C client for the Wayland
 virtual-pointer protocol (the protocol XML is vendored under
 `native/protocols/`). Without it every pointer tool fails with
 `native/vpointer missing`; `vroid_status` tells you whether it is there.
@@ -125,13 +128,26 @@ Optional environment variables:
 
 ## Windows quickstart
 
-Use **Windows 10/11**, **Python 3.11+**, [`uv`](https://docs.astral.sh/uv/),
-and the **Steam edition of VRoid Studio** (appid `1486350`). Start with VRoid
-Studio **2.14.0**, **English UI**, and the **primary monitor**; Japanese UI,
-multiple VRoid instances, and secondary-monitor workflows are not part of
-this first Windows port.
+Prerequisites:
 
-Install Tesseract with its **English (`eng`) language data**. The
+* **Windows 10/11**
+* **VRoid Studio**, Steam edition (appid `1486350`), calibrated against
+  **2.14.0**. Other installs (e.g. BOOTH) work through `MCP_VROID_EXE`.
+* **Python 3.11+** and [`uv`](https://docs.astral.sh/uv/)
+* **Tesseract OCR** with its **English (`eng`) language data**. Override the
+  executable with `MCP_VROID_TESSERACT`.
+
+> [!IMPORTANT]
+> **VRoid Studio's UI language must be English.** On a Japanese Windows,
+> VRoid usually starts in Japanese, and the OCR anchors (`Export`,
+> `Parameters`, tab names, …) will not match. Switch it once in VRoid:
+> kebab menu `⋮` → **Settings** → **Language** → **English**.
+
+Run a single VRoid instance. Multi-monitor desktops are supported for
+capture, but the anchors were calibrated with VRoid maximized on one
+monitor; see [Verified environments](#verified-environments).
+
+Install Tesseract with its English data. The
 [Tesseract installation guide](https://tesseract-ocr.github.io/tessdoc/Installation.html)
 lists Windows distributions. The server checks `MCP_VROID_TESSERACT` first,
 then `PATH`, then `Tesseract-OCR\tesseract.exe` under the standard Program
@@ -146,8 +162,8 @@ uv run python scripts/smoke_test.py
 ```
 
 Windows does **not** need `native/build.sh`, `vpointer`, `grim`, `hyprctl`,
-or X11. The Windows-only direct dependency is `pywinauto`; it brings its
-Win32 dependencies. Pillow, OCR, OpenCV, and the VRoid flows are shared.
+or X11. The Windows-only direct dependencies are `pywinauto` and `pywin32`
+(imported directly as `win32gui`, `win32api`, …). Pillow, OCR, OpenCV, and the VRoid flows are shared.
 
 Register the same 18 MCP tools with your client:
 
@@ -166,7 +182,9 @@ Register the same 18 MCP tools with your client:
 ```
 
 Call `vroid_status`, then `vroid_launch`. Windows reuses a verified running
-VRoid process or starts it through Steam and maximizes it. Inputs still go
+VRoid process or starts it through Steam and maximizes it. For a non-Steam
+install (for example the BOOTH edition), set `MCP_VROID_EXE` to the full
+path of `VRoidStudio.exe` and it is started directly instead. Inputs still go
 to the real desktop: keep VRoid in front while a flow runs. If another app
 takes focus, input is refused. Same-process dialogs owned by VRoid are
 allowed, and an active save dialog is kept in front of the main window.
@@ -184,8 +202,8 @@ Windows-specific differences from the Linux descriptions below:
   `window`, and absolute `layout` coordinates use **physical pixels**,
   with capture origin applied for desktop coordinates. DPI awareness is set
   before the GUI libraries load. Transport downscaling behaves as on Linux.
-* `whole_screen=true` captures the primary monitor, including native save
-  dialogs. It does not bypass the focus guard.
+* `whole_screen=true` captures the whole virtual screen (every monitor),
+  including native save dialogs. It does not bypass the focus guard.
 * VRM export and Save As use native Windows paths, including spaces and
   Japanese folder names. There is no Proton `Z:\` translation. Existing
   Save As/export targets cause an error before any input; they are not deleted.
@@ -358,7 +376,10 @@ This is GUI automation with no API underneath. Be realistic about it:
 
 **This server injects real mouse and keyboard events into your live desktop
 session and takes screenshots of it.** That is the entire point, and it is
-also the risk:
+also the risk. On Windows there is no separate workspace or virtual desktop:
+the server drives your **real, visible desktop** directly, with the same
+mouse and keyboard you are using. Do not use the PC for anything else while
+a flow runs.
 
 * Screenshots may capture anything on the output — `whole_screen=true`
   captures everything, and captures are written to disk unencrypted.
@@ -400,6 +421,20 @@ native/vpointer.c             zwlr_virtual_pointer client
 ```
 
 
+
+## Verified environments
+
+| OS | Resolution | Display scale | VRoid Studio | Result |
+|---|---|---|---|---|
+| Arch Linux + Hyprland | 2560×1440 | 125% | 2.14.0 (English, Steam/Proton) | upstream reference |
+| Windows 11 | 2560×1440 | 100% | 2.14.0 (English, Steam) | not yet verified |
+| Windows 11 | 1920×1080 | 100% | 2.14.0 (English, Steam) | not yet verified |
+| Windows 11 | 1920×1080 | 125% | 2.14.0 (English, Steam) | not yet verified |
+| Windows 11 | 1920×1080 | 150% | 2.14.0 (English, Steam) | not yet verified |
+
+Apart from the export flow, fractional anchors are still calibrated at
+2560×1440. Run `scripts/windows_acceptance.py` (all phases, then
+`alignment --dpi 120` / `--dpi 144`) on other setups and report the result.
 
 ## Licence
 

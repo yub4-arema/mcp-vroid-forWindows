@@ -45,12 +45,14 @@ VRMの書き出し時に、VRM Settingsの必須項目を入力する例：
 
 - Windows 10／11
 - Python **3.11以上**と **[uv](https://docs.astral.sh/uv/)**
-- **Steam版VRoid Studio**（アプリID：`1486350`）
-- VRoid Studioの **英語UI**。操作位置は **2.14.0** を基準にしています。
-- **主モニター**で、VRoidを1つだけ起動し、1つの操作セッションで使用
-- **Tesseract OCR** と英語の学習データ **`eng`**
+- **Steam版VRoid Studio**（アプリID：`1486350`）。操作位置は **2.14.0** を基準にしています。BOOTH版などは `MCP_VROID_EXE` で実行ファイルを指定します。
+- **Tesseract OCR** と英語の学習データ **`eng`**。実行ファイルは `MCP_VROID_TESSERACT` で上書きできます。
+- VRoidは1つだけ起動し、1つの操作セッションで使用
 
-日本語UIや一般的な複数モニターでの操作は、今回のWindows対応の対象外です。日本語の保存パスは利用できます。
+> [!IMPORTANT]
+> **VRoid StudioのUIは英語必須です。** 日本語版Windowsでは、VRoidが日本語UIで起動することが多く、そのままではOCRの目印（`Export`、`Parameters`、タブ名など）が一致せず動作しません。VRoidで一度だけ、ケバブメニュー `⋮` → **設定** → **言語** → **English** に切り替えてください。
+
+日本語UIは対象外です（日本語の保存パスは利用できます）。複数モニター環境でも撮影はできますが、操作位置はVRoidを1台のモニターで最大化した状態で調整しています。[動作確認済み環境](#動作確認済み環境)も参照してください。
 
 ### インストール
 
@@ -65,7 +67,7 @@ uv run python scripts/smoke_test.py
 
 スモークテストはMCPサーバーを起動し、18ツールの一覧と `vroid_status` を確認します。VRoidが起動していなくても実行できます。
 
-Windowsでは `native/build.sh` の実行や、`vpointer`、`grim`、`hyprctl`、X11の導入は不要です。追加するWindows専用の直接依存は `pywinauto` のみで、必要なWin32関連パッケージは依存として導入されます。Pillow、OCR、OpenCV、VRoidの操作手順は既存のものを使用します。
+Windowsでは `native/build.sh` の実行や、`vpointer`、`grim`、`hyprctl`、X11の導入は不要です。Windows専用の直接依存は `pywinauto` と `pywin32`（`win32gui`、`win32api` などを直接使用）です。Pillow、OCR、OpenCV、VRoidの操作手順は既存のものを使用します。
 
 ### MCPクライアントへの登録
 
@@ -91,12 +93,12 @@ Tesseractの検出順序は、`MCP_VROID_TESSERACT`、`PATH`、標準のProgram 
 
 ### Windowsでの動作
 
-- 実行プロセスを確認した既存のVRoidウィンドウを再利用します。起動していなければSteam経由で起動し、最大化します。
+- 実行プロセスを確認した既存のVRoidウィンドウを再利用します。起動していなければSteam経由で起動し、最大化します。BOOTH版などSteam以外で導入した場合は、`MCP_VROID_EXE` に `VRoidStudio.exe` のフルパスを指定すると、そのexeを直接起動します。
 - 操作前に、VRoid本体または同じプロセスに属する所有ダイアログが前面にあることを確認します。前面化に失敗した場合は入力せずエラーを返します。操作中はVRoidを前面に保ってください。
 - Windowsの[前面ウィンドウに関する制限](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow)によって自動で前面にできない場合は、VRoidを手動で前面にして再実行します。
 - `vroid_release` は、操作開始前に記憶したウィンドウがまだ存在する場合、そのウィンドウへ戻します。Windowsでは仮想デスクトップを操作せず、workspace関連の値は `null` になります。
 - 撮影範囲はタイトルバーと枠を除いたクライアント領域です。撮影と入力には**物理ピクセル**を使用し、画像をクライアントへ送る際の縮小率は元の仕様を維持しています。
-- `whole_screen=true` は、保存ダイアログも含めた主モニター全体を撮影します。
+- `whole_screen=true` は、保存ダイアログも含めた仮想スクリーン全体（すべてのモニター）を撮影します。
 - 保存・書き出しにはWindowsの絶対パスを渡します。Linux／Proton向けの `Z:\` 変換は行いません。空白や日本語を含むパスも使用できます。
 - 名前を指定した保存とVRM書き出しは、**出力先が既に存在する場合、入力を始める前にエラー**になります。既存ファイルは削除しません。名前を指定しない通常の保存は、現在のプロジェクトを上書きします。
 - ツール呼び出しはサーバー内で順番に実行し、マウスやキーの操作が重ならないようにしています。
@@ -109,6 +111,7 @@ Tesseractの検出順序は、`MCP_VROID_TESSERACT`、`PATH`、標準のProgram 
 | `MCP_VROID_CAPTURES` | `%LOCALAPPDATA%\mcp-vroid\captures` | スクリーンショットの保存先 |
 | `MCP_VROID_OUT` | `%LOCALAPPDATA%\mcp-vroid\out` | プロジェクト・VRMの既定の保存先 |
 | `MCP_VROID_TESSERACT` | 自動検出 | Tesseract実行ファイルの指定 |
+| `MCP_VROID_EXE` | 未設定（Steam経由で起動） | Steam以外で導入したVRoid Studioの実行ファイル |
 | `MCP_VROID_MAX_IMAGE_PX` | `1600` | クライアントへ送る画像の最長辺。`0` は縮小しない |
 
 保存先を環境変数で指定した場合は、その指定を優先します。
@@ -252,7 +255,7 @@ GUI操作には次の制約があります。
 
 ## デスクトップ操作について
 
-このサーバーは、使用中のデスクトップに実際のマウス・キーボード入力を送り、スクリーンショットをファイルに保存します。
+このサーバーは、使用中のデスクトップに実際のマウス・キーボード入力を送り、スクリーンショットをファイルに保存します。Windowsでは別のworkspaceや仮想デスクトップを使わず、**今見ている実際のデスクトップを、あなたと同じマウス・キーボードで直接操作します。** 操作中はPCで他の作業をしないでください。
 
 - `whole_screen=true` には、VRoid以外の画面情報が写る場合があります。画像は暗号化せず保存されます。
 - フォーカス確認は行いますが、VRoid内でどこを操作するかはクライアントの指示に依存します。
@@ -306,6 +309,18 @@ src/mcp_vroid/driver/
 native/vpointer.c            Linux用のWaylandポインターヘルパー
 ```
 
+
+## 動作確認済み環境
+
+| OS | 解像度 | 表示倍率 | VRoid Studio | 結果 |
+|---|---|---|---|---|
+| Arch Linux＋Hyprland | 2560×1440 | 125％ | 2.14.0（英語、Steam／Proton） | フォーク元の基準環境 |
+| Windows 11 | 2560×1440 | 100％ | 2.14.0（英語、Steam） | 未確認 |
+| Windows 11 | 1920×1080 | 100％ | 2.14.0（英語、Steam） | 未確認 |
+| Windows 11 | 1920×1080 | 125％ | 2.14.0（英語、Steam） | 未確認 |
+| Windows 11 | 1920×1080 | 150％ | 2.14.0（英語、Steam） | 未確認 |
+
+書き出し以外の操作位置は、まだ2560×1440で調整したままです。別の環境では `scripts/windows_acceptance.py` の全フェーズと `alignment --dpi 120`／`--dpi 144` を実行し、結果を報告してください。
 
 ## フォーク元とライセンス
 

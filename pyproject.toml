@@ -14,10 +14,12 @@ keywords = [
     "gui-automation",
     "hyprland",
     "wayland",
+    "windows",
     "3d",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Environment :: Win32 (MS Windows)",
     "Environment :: X11 Applications",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
@@ -36,6 +38,7 @@ dependencies = [
     "opencv-python-headless>=4.9",
     "pytesseract>=0.3.10",
     "python-xlib>=0.33; sys_platform == 'linux'",
+    "pywin32>=306; sys_platform == 'win32'",
     "pywinauto>=0.6.8; sys_platform == 'win32'",
 ]
 
