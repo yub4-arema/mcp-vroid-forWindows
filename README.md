@@ -184,8 +184,8 @@ Windows-specific differences from the Linux descriptions below:
   `window`, and absolute `layout` coordinates use **physical pixels**,
   with capture origin applied for desktop coordinates. DPI awareness is set
   before the GUI libraries load. Transport downscaling behaves as on Linux.
-* `whole_screen=true` captures the primary monitor, including native save
-  dialogs. It does not bypass the focus guard.
+* `whole_screen=true` captures the whole virtual screen (every monitor),
+  including native save dialogs. It does not bypass the focus guard.
 * VRM export and Save As use native Windows paths, including spaces and
   Japanese folder names. There is no Proton `Z:\` translation. Existing
   Save As/export targets cause an error before any input; they are not deleted.

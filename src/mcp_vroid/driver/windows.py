@@ -271,8 +271,11 @@ def grab_region(x: int, y: int, w: int, h: int, path: Path):
 
 
 def screen_geometry() -> tuple[int, int, int, int]:
+    """The virtual screen spanning every monitor; its origin may be negative."""
     import win32api
-    return 0, 0, win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
+    metric = win32api.GetSystemMetrics
+    # SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN
+    return metric(76), metric(77), metric(78), metric(79)
 
 
 def move(x: float, y: float) -> None:

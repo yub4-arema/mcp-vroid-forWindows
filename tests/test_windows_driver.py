@@ -33,6 +33,13 @@ class Coordinates(unittest.TestCase):
             self.assertEqual((shot.ox, shot.oy, shot.scale), (10, 25, 1))
             self.assertTrue(path.exists())
 
+    def test_screen_geometry_is_virtual_screen(self):
+        metrics = {76: -1920, 77: -200, 78: 4480, 79: 1640}
+        win32api = MagicMock()
+        win32api.GetSystemMetrics.side_effect = metrics.__getitem__
+        with patch.dict("sys.modules", {"win32api": win32api}):
+            self.assertEqual(windows.screen_geometry(), (-1920, -200, 4480, 1640))
+
     def test_double_click_preserves_image_space_and_button(self):
         shot = capture.Shot(Image.new("RGB", (100, 100)), Path("shot.png"), 12, 35, 1)
         with patch.object(window, "IS_WINDOWS", True), patch.object(inputs, "_guard"), \
