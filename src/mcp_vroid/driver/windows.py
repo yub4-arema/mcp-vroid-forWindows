@@ -143,9 +143,14 @@ def release() -> dict:
     restored = False
     if _previous_window:
         hwnd, pid = _previous_window
-        if _gui().IsWindow(hwnd) and _pid(hwnd) == pid:
-            _focus_handle(hwnd)
-            restored = True
+        try:
+            if _gui().IsWindow(hwnd) and _pid(hwnd) == pid:
+                _focus_handle(hwnd)
+                restored = True
+        except Exception:
+            # Focus may be refused or the window may close meanwhile; releasing
+            # must still succeed. pywin32 raises pywintypes.error, not OSError.
+            pass
     _previous_window = None
     _remembered = False
     return {"restored_window": target if restored else None,

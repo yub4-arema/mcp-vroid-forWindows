@@ -183,6 +183,20 @@ class WindowIdentity(unittest.TestCase):
             focus.assert_not_called()
 
 
+class ReleaseBehavior(unittest.TestCase):
+    def test_release_survives_refused_focus(self):
+        with patch.object(windows, "_previous_window", (10, 123)), \
+                patch.object(windows, "_remembered", True), \
+                patch.object(windows, "_gui") as gui, \
+                patch.object(windows, "_pid", return_value=123), \
+                patch.object(windows, "_focus_handle",
+                             side_effect=RuntimeError("refused")):
+            gui.return_value.IsWindow.return_value = True
+            self.assertIsNone(windows.release()["restored_window"])
+            self.assertIsNone(windows._previous_window)
+            self.assertFalse(windows._remembered)
+
+
 class WorkflowVerification(unittest.TestCase):
     def test_small_text_retry_is_windows_only(self):
         image = capture.Shot(Image.new("RGB", (2000, 1000)), Path("fields.png"), 0, 0, 1)
