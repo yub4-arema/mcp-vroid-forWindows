@@ -65,7 +65,7 @@ uv run python scripts/smoke_test.py
 
 スモークテストはMCPサーバーを起動し、18ツールの一覧と `vroid_status` を確認します。VRoidが起動していなくても実行できます。
 
-Windowsでは `native/build.sh` の実行や、`vpointer`、`grim`、`hyprctl`、X11の導入は不要です。追加するWindows専用の直接依存は `pywinauto` のみで、必要なWin32関連パッケージは依存として導入されます。Pillow、OCR、OpenCV、VRoidの操作手順は既存のものを使用します。
+Windowsでは `native/build.sh` の実行や、`vpointer`、`grim`、`hyprctl`、X11の導入は不要です。Windows専用の直接依存は `pywinauto` と `pywin32`（`win32gui`、`win32api` などを直接使用）です。Pillow、OCR、OpenCV、VRoidの操作手順は既存のものを使用します。
 
 ### MCPクライアントへの登録
 

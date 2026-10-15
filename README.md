@@ -146,8 +146,8 @@ uv run python scripts/smoke_test.py
 ```
 
 Windows does **not** need `native/build.sh`, `vpointer`, `grim`, `hyprctl`,
-or X11. The Windows-only direct dependency is `pywinauto`; it brings its
-Win32 dependencies. Pillow, OCR, OpenCV, and the VRoid flows are shared.
+or X11. The Windows-only direct dependencies are `pywinauto` and `pywin32`
+(imported directly as `win32gui`, `win32api`, …). Pillow, OCR, OpenCV, and the VRoid flows are shared.
 
 Register the same 18 MCP tools with your client:
 
