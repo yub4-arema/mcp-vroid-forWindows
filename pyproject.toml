@@ -14,10 +14,12 @@ keywords = [
     "gui-automation",
     "hyprland",
     "wayland",
+    "windows",
     "3d",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Environment :: Win32 (MS Windows)",
     "Environment :: X11 Applications",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
