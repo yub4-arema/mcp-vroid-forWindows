@@ -399,19 +399,7 @@ src/mcp_vroid/driver/         the engine
 native/vpointer.c             zwlr_virtual_pointer client
 ```
 
-## Contributing
 
-Issues and PRs welcome. Useful things to bring:
-
-* **A port to another wlroots compositor.** Only `driver/window.py` is
-  Hyprland-specific; the rest already works anywhere `grim` and
-  `zwlr_virtual_pointer` do.
-* **Anchors for other resolutions or DPI scales**, or for the Japanese UI.
-* **Bug reports** — include your compositor, VRoid Studio version, monitor
-  resolution and scale, and the output of `vroid_status`. A capture from the
-  failing step helps enormously.
-
-Nothing here is auto-formatted or linted by CI; match the surrounding style.
 
 ## Licence
 
